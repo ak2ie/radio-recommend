@@ -15,3 +15,23 @@
     --background-end-rgb: 0, 0, 0;
   }
 }
+
+body {
+  height: 100vh;
+}
+
+.gra {
+  /* background-color:#99c2ff;
+  background-image:
+  radial-gradient(at 21% 12%, hsla(159,94%,78%,1) 0px, transparent 50%),
+  radial-gradient(at 8% 69%, hsla(148,84%,62%,1) 0px, transparent 50%),
+  radial-gradient(at 44% 39%, hsla(266,76%,74%,1) 0px, transparent 50%),
+  radial-gradient(at 19% 30%, hsla(60,72%,79%,1) 0px, transparent 50%),
+  radial-gradient(at 74% 83%, hsla(230,71%,78%,1) 0px, transparent 50%),
+  radial-gradient(at 30% 74%, hsla(113,78%,64%,1) 0px, transparent 50%),
+  radial-gradient(at 23% 39%, hsla(182,99%,60%,1) 0px, transparent 50%); */
+
+  background-color: #eec0c6;
+background-image: linear-gradient(315deg, #eec0c6 0%, #7ee8fa 74%);
+
+}
