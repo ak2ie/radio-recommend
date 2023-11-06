@@ -1,2 +1,5 @@
 docker/firebase/bin/
 docker/firebase/config/
+backend/cc.ja.300.vec
+backend/cc.ja.300.bin
+backend/cc.jv.300.bin
