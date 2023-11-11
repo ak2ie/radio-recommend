@@ -32,7 +32,12 @@
         "venv",
         ".git",
         "firebase-debug.log",
-        "firebase-debug.*.log"
+        "firebase-debug.*.log",
+        "cc.ja*",
+        "__pycache__",
+        "lda_content.py",
+        "generate_model.py",
+        "word2vec.py"
       ]
     }
   ]

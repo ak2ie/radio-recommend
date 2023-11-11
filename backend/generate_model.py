@@ -1,53 +1,165 @@
 import gensim
 import MeCab
+import csv
+import os
+import numpy as np
+import firebase_admin
+from firebase_admin import credentials
+from firebase_admin import firestore
+import os
+
+
+class ProgramModel:
+	def __init__(self, model_path):
+		self.__model_path = model_path
+		self.__model = gensim.models.KeyedVectors.load_word2vec_format("./cc.ja.300.vec")
+
+		os.environ["FIRESTORE_EMULATOR_HOST"]="localhost:8080"
+		os.environ["GCLOUD_PROJECT"]="my_project"
+		os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "./serviceAccountKey.json"
+		cred = credentials.Certificate("./serviceAccountKey.json")
+		firebase_admin.initialize_app(credential=cred)
+		self.__db = firestore.client()
 
 # https://fasttext.cc/docs/en/crawl-vectors.html
-# model_path = "./cc.ja.300.vec"
 
-# wv = gensim.models.KeyedVectors.load_word2vec_format(model_path)
+	def __freq_words(self, text):
+		''''
+		テキストを形態素解析して、出現頻度順に単語をリスト化する
 
-# match = wv.most_similar("企業", topn=10)
+		Args:
+			text (string): テキスト
+		Returns:
+			出現頻度順の単語一覧
+		'''
+		mecabTagger = MeCab.Tagger()
+		noun_count = {}
 
-# print(match)
+		node = mecabTagger.parseToNode(text)
+		while node:
+			word = node.surface
+			hinshi = node.feature.split(",")[0]
+			if word in noun_count.keys() and hinshi == "名詞":
+				noun_freq = noun_count[word]
+				noun_count[word] = noun_freq + 1
+			elif hinshi == "名詞":
+				noun_count[word] = 1
+			else:
+				pass
+			node = node.next
 
-# ------------------------------------------------------------------------------
-#	形態素解析
-# ------------------------------------------------------------------------------
-text = '''パーソルプロセス＆テクノロジーは、人・プロセスデザイン・テクノロジーの3つの力によって、お客様の様々なビジネスプロセスを変革に導くことで、「はたらいて、笑おう。」の世界を実現いたします。
-少子高齢化による生産労働人口減少という課題に対する解決策は、「はたらく人を増やすこと」と「一人ひとりの生産性を向上させていくこと」のいずれかです。
-はたらく意思のある方に積極的に参加いただき、人と仕事の適切なマッチングを通じて社会全体で適材適所を推進していくことに加え、テクノロジーを活用しながら業務のあり方を変えていくことが、今後の「仕事」や「はたらき方」に対し大きな影響をもたらします。
-その中で、私たちは、お客様の生産性向上を徹底的に推進することを使命とし、AIやIoTなどのテクノロジーを活用したDXの推進、RPA導入を含めたコンサルティング・アウトソーシングを通じて、抜本的にビジネスプロセスを変革いたします。
-私たちは社会問題に正面から向き合い、社会の役に立つ会社でありたい、正解のない課題に対しても失敗を恐れずチャレンジしていきたいと考えています。
-パーソルプロセス＆テクノロジーは、お客様から選ばれ続ける企業を目指し、挑戦してまいります。'''
+		noun_count = sorted(noun_count.items(), key=lambda x: x[1], reverse=True)
 
-mecabTagger = MeCab.Tagger()
-noun_count = {}
+		return noun_count
 
-# https://note.com/smkt_interview/n/nafebd60ae6bc
-node = mecabTagger.parseToNode(text)
-while node:
-	word = node.surface
-	hinshi = node.feature.split(",")[0]
-	if word in noun_count.keys() and hinshi == "名詞":
-		noun_freq = noun_count[word]
-		noun_count[word] = noun_freq + 1
-	elif hinshi == "名詞":
-		noun_count[word] = 1
-	else:
-		pass
-	node = node.next
+	def __calc_vector(self, noun_count, topn):
+		'''
+		単語の一覧から頻出する上位N件を取得して、ベクトル化する
+		
+		Args:
+			noun_count (array): 単語一覧
+			topn (integer): 一覧から取得する件数
+		Returns:
+			array ベクトル
+		'''
+		vectors = []
+		words = list(dict(noun_count[:topn]).keys())
+		for word in words:
+			if word in self.__model:
+				vectors.append(self.__model[word].mean(axis=0))
+			else:
+				# モデルに存在しない場合はランダムな値を取得
+				vectors.append(np.random.randn(self.__model.vector_size).mean(axis=0))
+		return vectors
 
-noun_count = sorted(noun_count.items(), key=lambda x: x[1], reverse=True)
-print(noun_count)
+	def __get_similar_indexes(self, vectors, target):
+		'''
+		ベクトル値を基に類似度を計算する
 
-wakati = MeCab.Tagger("-Owakati")
-words = wakati.parse(text)
+		Args:
+			vectors (float[]): ベクトル値一覧
+			target (float): 類似度を計算したい値
+		Returns:
+			int[]: 引数のvectorsの類似順番（0オリジン）
+		'''
+		# 似たアイテムを探す
+		# for i, vec in enumerate(vectors):
+		# 内積（コサイン類似度=内積/ベクトルの大きさ(=1)=内積, -1.0:逆, 0:無関係, 1:似ている）
+		score_vec = np.dot(vectors, target)
+		# valueの順に決定
+		similar_indexes = np.argsort(-score_vec)
+		# 要素数3の配列になるはず
+		return similar_indexes
 
-# ------------------------------------------------------------------------------
-#	モデル
-# ------------------------------------------------------------------------------
-model_path = "./cc.ja.300.vec"
-model = gensim.models.KeyedVectors.load_word2vec_format(model_path)
+	def generate(self, programs_csv_path):
+		'''
+		番組一覧と記事テキストから、番組類似度を算出しDBに保存する
 
-print(model["言語"])
-print(model["東京"])
+		Args:
+			programs_csv_path (string): 番組一覧CSVファイルパス
+		Returns:
+			なし
+		'''
+
+		print("処理開始")
+		if not os.path.isfile(programs_csv_path):
+			print("番組一覧CSVが存在しません!")
+			return
+		
+		with open(programs_csv_path) as f:
+			reader = csv.DictReader(f)
+			vectors = []
+			titles = []
+			program_list = []
+			for row in reader:
+				program_list.append(row)
+				file_path = os.path.join("text", row["broadcast"], row["file_name"])
+				if not os.path.isfile(file_path):
+					print("記事ファイルが存在しません！: {}".format(file_path))
+					continue
+
+				with open(file_path) as t:
+					text = t.read()
+					vector = self.__freq_words(text)
+
+					print("ベクトル計算開始： {}".format(file_path))
+					vectors.append(self.__calc_vector(vector, 10))
+					titles.append(row["title"])
+
+			for vec in vectors:
+				print(vec)
+
+			vectors = np.array(vectors)
+			# 正規化
+			sum_vec = np.sqrt(np.sum(vectors ** 2, axis=1))
+			movie_norm_vectors = vectors / sum_vec.reshape((-1, 1))
+
+			for i, v in enumerate(movie_norm_vectors):
+				print(f'{titles[i]}: {movie_norm_vectors[i]}')
+
+			similar_indexes = self.__get_similar_indexes(movie_norm_vectors, movie_norm_vectors[0])
+			print(similar_indexes)
+
+			for i in range(0, len(titles)):
+				program = {
+					"id": i + 1,
+					"title": titles[i], 
+					"vector": movie_norm_vectors[i].tolist(),
+					"broadcast_call_sign": program_list[i]["broadcast"],
+					"start": program_list[i]["start"],
+					"end":  program_list[i]["end"],
+					"day_of_week": {
+						"monday": program_list[i]["day_of_week"][0] == "o",
+						"tuesday": program_list[i]["day_of_week"][1] == "o",
+						"wednesday": program_list[i]["day_of_week"][2] == "o",
+						"thursday": program_list[i]["day_of_week"][3] == "o",
+						"friday": program_list[i]["day_of_week"][4] == "o",
+						"saturday": program_list[i]["day_of_week"][5] == "o",
+						"sunday": program_list[i]["day_of_week"][6] == "o",
+					}
+				}
+				self.__db.collection("programs").add(program)
+
+if __name__ == "__main__":
+	m = ProgramModel("./cc.ja.300.vec")
+	m.generate("./input.csv")
