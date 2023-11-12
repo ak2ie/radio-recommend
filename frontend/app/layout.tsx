@@ -1,7 +1,8 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
-import ThemeRegistry from '../components/ThemeRegistry/ThemeRegistry'
+import { createContext } from 'react'
+import Content from './content'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -17,8 +18,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ja">
-      <body className={`gra ${inter.className}`}>
-        <ThemeRegistry>{children}</ThemeRegistry>
+      <body className={`gra sm:mx-0 mx-3 ${inter.className}`}>
+          <Content>{children}</Content>
       </body>
     </html>
   )

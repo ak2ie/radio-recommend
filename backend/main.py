@@ -7,6 +7,7 @@ from firebase_admin import initialize_app, firestore
 from flask import Flask, jsonify, request
 import logging
 import numpy as np
+from flask_cors import CORS
 
 # import sys
 # sys.path.append("/usr/local/lib/python3.11/dist-packages")
@@ -14,6 +15,7 @@ import numpy as np
 initialize_app()
 options.set_global_options(region=options.SupportedRegion.ASIA_NORTHEAST1)
 app = Flask(__name__)
+CORS(app)
 
 # ログ設定
 logging.basicConfig(
